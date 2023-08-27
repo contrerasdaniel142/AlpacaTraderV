@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="description" content="">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="">
+  <title>TradingViewChart</title>
+  <!-- Adding the standalone version of Lightweight charts -->
+  <script
+    type="text/javascript"
+    src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"
+  ></script>
+  <style>
+    body, html {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      padding: 0;
+    }
+
+    #titulo {
+      text-align: center;
+      margin-top: 50px;
+    }
+
+    #main-container {
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      margin: 0 auto;
+      width: 70%;
+      height: 70%;
+    }
+
+    #container {
+      width: 70%;
+      height: 100%;
+      background-color: #222;
+      transition: all 0.3s ease;
+      margin: 1px;
+      position: relative; /* Agregamos posición relativa para que los elementos posicionados dentro de él sean relativos a este contenedor */
+    }
+
+    #watchlist {
+      width: 20%;
+      height: 100%;
+      flex-direction: column;
+      align-items: flex-start;
+      justify-content: flex-start;
+      color: white;
+      font-family: Arial, sans-serif;
+      background-color: #222; 
+      transition: all 0.3s ease;
+      margin: 1px;
+      overflow-y: auto; /* Agregamos scroll vertical */
+    }
+
+    #watchlist h2 {
+      margin: 0;
+      font-size: 25px;
+      font-weight: bold;
+      text-align: center;
+      position: sticky;
+      top: 0; /* Fija el encabezado en la parte superior */
+      background-color: #222;
+      z-index: 1; /* Asegura que el encabezado esté por encima del contenido desplazable */
+    }
+
+    .symbol-list {
+      padding: 10px;
+      box-sizing: border-box;
+    }
+
+    .symbol-container {
+      width: 95%;
+      padding: 5px;
+      border: 1px solid grey;
+      margin-top: 10px;
+      display: flex;
+      align-items: center;
+      cursor: pointer;
+    }
+
+    .symbol-container:hover {
+      background-color: lightgray;
+    }
+
+    .symbol-container span {
+      margin-left: 10px;
+      font-size: 16px;
+    }
+
+    /* Estilos para el elemento de leyenda */
+    #legends {
+      position: absolute;
+      left: 12px;
+      top: 12px;
+      z-index: 1;
+      font-size: 14px;
+      font-family: sans-serif;
+      line-height: 18px;
+      font-weight: 300;
+      color: white;
+    }
+  </style>
+</head>
+
+<body>
+    <h1 id="titulo">TradingViewChart</h1>
+    <div id="main-container">
+        <div id="container"></div>
+            <div id="watchlist">
+                <h2>WatchList</h2>
+                {% for symbol in symbol_list %}
+            <div id="{{ symbol }}" class="symbol-container" onclick="updateTradingView('{{ symbol }}')">
+                <div style="background-color: yellow; width: 10px; height: 10px; margin-right: 5px; border-radius: 50%;"></div>
+                <span>{{ symbol }}</span>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    <script type="text/javascript">
+        let firstSymbol = Object.keys({{ data | safe }})[0];
+        let pivot_strong_data = {{ pivot_strong_data }}; 
+        let pivot_weak_data = {{ pivot_weak_data }}; 
+    
+        let chart;
+        let listPriceLines = []; // Lista para almacenar las líneas de precio pivot
+    
+        updateTradingView(firstSymbol) 
+        
+        function updateTradingView(symbol) {
+            // Obtén el objeto del diccionario correspondiente al símbolo seleccionado
+            // Accede a la lista de barras dentro del objeto
+            candleStickData = {{ data }}[symbol];
+    
+            // Verificar si existe un gráfico anterior y eliminarlo
+            if (chart) {
+                chart.remove();
+            }
+    
+            // Create the Lightweight Chart within the container element
+            chart = LightweightCharts.createChart(
+                document.getElementById('container'),
+                {
+                    layout: {
+                        background: { color: "#222" },
+                        textColor: "#C3BCDB",
+                    },
+                    grid: {
+                        vertLines: { color: "#444" },
+                        horzLines: { color: "#444" },
+                    },
+                }
+            );
+    
+            // Setting the border color for the vertical axis
+            chart.priceScale().applyOptions({
+                borderColor: "#71649C",
+            });
+    
+            // Setting the border color for the horizontal axis
+            chart.timeScale().applyOptions({
+                borderColor: "#71649C",
+            });
+    
+            // Get the current users primary locale
+            const currentLocale = window.navigator.languages[0];
+    
+            // Example of applying both properties in a single call
+            chart.timeScale().applyOptions({
+                borderColor: '#71649C',
+                barSpacing: 10,
+            });
+    
+            // Create a number format using Intl.NumberFormat
+            const myPriceFormatter = Intl.NumberFormat(currentLocale, {
+                style: "currency",
+                currency: "USD", // Currency for data points
+            }).format;
+    
+            // Customizing the Crosshair
+            chart.applyOptions({
+                localization: {
+                    priceFormatter: myPriceFormatter,
+                },
+                /*
+                crosshair: {
+                    mode: LightweightCharts.CrosshairMode.Normal,
+                    vertLine: {
+                        width: 8,
+                        color: "rgba(0, 123, 255, 0.4)", // Cambié el color a un azul más claro y con más opacidad
+                        style: LightweightCharts.LineStyle.Solid,
+                        labelBackgroundColor: "rgba(0, 123, 255, 0.8)",
+                    },
+    
+                  horzLine: {
+                        color: "rgba(0, 123, 255, 0.8)",
+                        labelBackgroundColor: "rgba(0, 123, 255, 0.8)",
+                    },
+                },
+                */
+            });  
+    
+            // Convert the candlestick data for use with a line series
+            let lineData = candleStickData.map((datapoint) => ({
+                time: datapoint.time,
+                value: datapoint.close
+            }));
+                
+            // Add an area series to the chart
+            let areaSeries = chart.addAreaSeries({
+                lastValueVisible: false,
+                crosshairMarkerVisible: false,
+                lineColor: "transparent",
+                topColor: "rgba(29, 53, 87, 0.6)",
+                bottomColor: "rgba(29, 53, 87, 0.1)",
+            });
+    
+            areaSeries.priceScale().applyOptions({
+                scaleMargins: {
+                    // positioning the price scale for the area series
+                    top: 0.1,
+                    bottom: 0.4,
+                },
+            });
+    
+            const volumeSeries = chart.addHistogramSeries({
+                color: '#26a69a',
+                priceFormat: {
+                    type: 'volume',
+                },
+                priceScaleId: '', // set as an overlay by setting a blank priceScaleId
+                // set the positioning of the volume series
+                scaleMargins: {
+                    top: 0.7, // highest point of the series will be 70% away from the top
+                    bottom: 0,
+                },
+            });
+    
+            volumeSeries.priceScale().applyOptions({
+                scaleMargins: {
+                    top: 0.7, // highest point of the series will be 70% away from the top
+                    bottom: 0,
+                },
+            });
+    
+            // Set the data for the Area Series
+            areaSeries.setData(lineData);
+        
+            // Create the Main Series (Candlesticks)
+            const mainSeries = chart.addCandlestickSeries();
+            // Set the data for the Main Series
+            mainSeries.setData(candleStickData);
+    
+            // Adjust the options for the priceScale of the mainSeries
+            mainSeries.priceScale().applyOptions({
+                autoScale: true, // disables auto scaling based on visible content
+                scaleMargins: {
+                    top: 0.1,
+                    bottom: 0.2,
+                },
+            });
+
+
+            // Legends
+            const container = document.getElementById('container');
+    
+            const legend = document.createElement('div');
+            legend.style = `position: absolute; left: 12px; top: 12px; z-index: 1; font-size: 14px; font-family: sans-serif; line-height: 18px; font-weight: 300;`;
+            legend.style.color = 'white';
+            container.appendChild(legend);
+    
+            const getLastBar = series => {
+                const lastIndex = series.dataByIndex(Math.Infinity, -1);
+                return series.dataByIndex(lastIndex);
+            };
+            const formatPrice = price => (Math.round(price * 100) / 100).toFixed(2);
+            const setTooltipHtml = (name, date, open, high, low, close, volume) => {
+                legend.innerHTML = `<div style="font-size: 24px; margin: 4px 0px;">${name} 1D</div><div style="font-size: 22px; margin: 4px 0px;">O:${open} H:${high} L:${low} C:${close}</div><div>${date}</div>`;
+            };
+    
+            const updateLegend = param => {
+                const validCrosshairPoint = !(
+                    param === undefined || param.time === undefined || param.point.x < 0 || param.point.y < 0
+                );
+                const bar = validCrosshairPoint ? param.seriesData.get(mainSeries) : getLastBar(mainSeries);
+                // time is in the same format that you supplied to the setData method,
+                // which in this case is YYYY-MM-DD
+                const time = formatDate(bar.time);
+                const open = bar.open;
+                const high = bar.high;
+                const low = bar.low;
+                const close = bar.close;
+                const volume = bar.volume;
+    
+                setTooltipHtml(symbol, time, open, high, low, close, volume);
+            };
+    
+            chart.subscribeCrosshairMove(updateLegend);
+            updateLegend(undefined);
+    
+            // Agrega un event listener al evento 'resize' del objeto window
+            window.addEventListener('resize', function() {
+                chart.resize(
+                document.getElementById('container').clientWidth,
+                document.getElementById('container').clientHeight
+                );
+            });
+    
+            let priceLine={}
+        
+            pivot_strong_data[symbol][0].forEach(function(strong_peak) {
+                priceLine = {
+                    price: strong_peak,
+                    color: '#FF8000',
+                    lineWidth: 2,
+                    lineStyle: 0, // LineStyle.Dashed
+                    axisLabelVisible: true,
+                    title: 'Pico Fuerte'
+                };
+                areaSeries.createPriceLine(priceLine);
+            });
+        
+            pivot_strong_data[symbol][1].forEach(function(strong_valley) {
+                priceLine = {
+                    price: strong_valley,
+                    color: '#FF007F',
+                    lineWidth: 2,
+                    lineStyle: 0, // LineStyle.Dashed
+                    axisLabelVisible: true,
+                    title: 'Valle Fuerte'
+                };
+                areaSeries.createPriceLine(priceLine);
+            });
+            
+            
+            pivot_weak_data[symbol][0].forEach(function(wak_peak) {
+                priceLine = {
+                    price: wak_peak,
+                    color: '#ffe6cd',
+                    lineWidth: 2,
+                    lineStyle: 0, // LineStyle.Dashed
+                    axisLabelVisible: true,
+                    title: 'Pico Debil'
+                };
+                areaSeries.createPriceLine(priceLine);
+            });
+        
+            pivot_weak_data[symbol][1].forEach(function(weak_valley) {
+                priceLine = {
+                    price: weak_valley,
+                    color: '#ffcde6',
+                    lineWidth: 2,
+                    lineStyle: 0, // LineStyle.Dashed
+                    axisLabelVisible: true,
+                    title: 'Valle Debil'
+                };
+                areaSeries.createPriceLine(priceLine);
+            });
+            
+        }
+        function formatDate(dateObj) {
+            // Asegúrate de tener valores numéricos para el año, mes y día
+            const year = Number(dateObj.year);
+            const month = Number(dateObj.month);
+            const day = Number(dateObj.day);
+          
+            // Crea una fecha utilizando los valores proporcionados
+            const date = new Date(year, month - 1, day);
+          
+            // Obtiene los componentes de la fecha (año, mes y día)
+            const formattedYear = date.getFullYear().toString().padStart(4, '0');
+            const formattedMonth = (date.getMonth() + 1).toString().padStart(2, '0');
+            const formattedDay = date.getDate().toString().padStart(2, '0');
+          
+            // Crea la cadena de texto con el formato deseado "YYYY-MM-DD"
+            const formattedDate = `${formattedYear}-${formattedMonth}-${formattedDay}`;
+          
+            return formattedDate;
+          }
+    </script>
+</body>
+
+</html>
