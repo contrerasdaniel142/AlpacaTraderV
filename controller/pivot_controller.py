@@ -207,7 +207,7 @@ class PivotFilter:
         list_20_days_volume_filter = [
             symbol
             for symbol in common_symbols
-            if self._volume_19_days[symbol][-1, 0] == filtered_bar_day[filtered_bar_day[:, 0] == symbol][-1, 1]
+            if self._volume_19_days[symbol][-1, 0] != filtered_bar_day[filtered_bar_day[:, 0] == symbol][-1, 1]
             and np.mean(np.append(self._volume_19_days[symbol][:, 1], filtered_bar_day[filtered_bar_day[:, 0] == symbol][-1, 2])) > 30000
         ]
         
@@ -245,10 +245,10 @@ class PivotFilter:
             for symbol, pivot, action in list_near_pivot
             if (
                 (action == "buy" and trade_arrays[trade_arrays['symbol'] == symbol]['price'][0] >
-                avg_close_last_5[avg_close_last_5['symbol'] == symbol]['avg_close'][0])
+                avg_close_last_5[avg_close_last_5['symbol'] == symbol]['avg_close'])
                 or
                 (action == "sell" and trade_arrays[trade_arrays['symbol'] == symbol]['price'][0] <
-                avg_close_last_5[avg_close_last_5['symbol'] == symbol]['avg_close'][0])
+                avg_close_last_5[avg_close_last_5['symbol'] == symbol]['avg_close'])
             )
         ]
         # Actualiza la lista original con los elementos válidos
@@ -310,7 +310,7 @@ class PivotFilter:
         # Se revisa si la lista esta vacia
         if np.any(list_pivots):
             # Busca los pivots que se encuentren cerca al precio
-            check_near_strong_pivot = np.where(np.abs(list_pivots[:,1] - current_price) < par_slip)
+            check_near_strong_pivot = np.where(np.abs(list_pivots[:,1] - current_price) < par_slip | np.abs(list_pivots[:,1] - current_price) > par_slip*0.5)
             check_near_strong_pivot = list_pivots[check_near_strong_pivot]
             # En caso de encontrar retorna True
             if np.any(check_near_strong_pivot) :
@@ -614,6 +614,7 @@ class AlphaController:
         Realiza operaciones de compra o venta según las condiciones.
         """
         while True:
+            time.sleep(1)
             positions_list = self._client.get_all_positions()
             for position in positions_list:
                 if float(position['Unrealized']) <= -3 or float(position['Unrealized']) >= 5:
@@ -639,25 +640,23 @@ class PivotController:
         """
         self.next_close = TradingClient(conf.alpaca_api_key_id, conf.alpaca_api_secret_key).get_clock().next_close
         self.pivot_filter = PivotFilter()
-        self._real_time_queue = multiprocessing.Queue()
-        self._alpha_trader_queue = multiprocessing.Queue()
         self._last_minute = None
         self.trades = {}
     
-    def _start_real_time(self, list_symbols: List[str]):
-        controller = RealTimeController(self._real_time_queue, list_symbols)
+    def _start_real_time(self, list_symbols: List[str], queue: Queue):
+        controller = RealTimeController(queue, list_symbols)
         controller.start()
         
-    def _receive_trade(self):
+    def _receive_trade(self, queue: Queue):
         while True:
-            trade = self._real_time_queue.get()
+            trade = queue.get()
             current_time = datetime.now().astimezone(pytz.utc)
             # Si cambió el minuto, reiniciamos los datos de operaciones
             if self._last_minute != current_time.minute:
                 self._reset_trades(current_time.minute)
             # Actualizamos los datos de operaciones y verificamos condiciones
             self._update_trade_data(trade)
-            self._check_trade_condition(trade)
+            self._check_trade_condition(trade, queue)
 
     def _reset_trades(self, new_minute):
         """
@@ -683,14 +682,14 @@ class PivotController:
         if self._last_minute == trade['timestamp'].minute:
             self.trades[trade['symbol']] += trade['size']
             
-    def _check_trade_condition(self, trade):
+    def _check_trade_condition(self, trade, queue: Queue):
         # Verifica si el tamaño de operación supera el umbral y toma acción si es así
         current_volume = self.trades.get(trade['symbol'], 0)
         if current_volume > 5000:
             # Se guarda el volumen actual del activo
             trade['volume'] = current_volume
             # Enviar trade a alphatrader para comprobar si es comprable
-            self._alpha_trader_queue.put(trade)
+            queue.put(trade)
 
     def start(self):
         """
@@ -709,14 +708,16 @@ class PivotController:
         """
         real_time_process = None
         list_symbols_to_subscribed: List[str] = []
+        real_time_queue = multiprocessing.Queue()
         
         # Proceso que estara encargado de recibir los trades que lleguen de real_time_process y procesarlos
-        receive_trades_process = multiprocessing.Process(target=self._receive_trade)
+        receive_trades_process = multiprocessing.Process(target=self._receive_trade, args=(real_time_queue,))
         receive_trades_process.start()
         
         # Proceso que estara encargado de procesar los trades cuyo volumen supere el umbral y tradearlos
         alpha_trader = AlphaController()
-        check_trades_process = multiprocessing.Process(target=alpha_trader.check_trade, args=(self._alpha_trader_queue,))
+        alpha_trader_queue = multiprocessing.Queue()
+        check_trades_process = multiprocessing.Process(target=alpha_trader.check_trade, args=(alpha_trader_queue,))
         check_trades_process.start()
         
         # Proceso que estara encargado de consultar las posiciones para administrar ganancias o perdidas
@@ -754,15 +755,14 @@ class PivotController:
                 
                 if set_suscribed_symbols != set_symbols_to_subscribed:
                     if real_time_process is not None:
-                        real_time_process.terminate()
+                        real_time_process = real_time_process.terminate()
+                        
                     alpha_trader.subscribed_symbols = filtered_assets
-                    real_time_process = multiprocessing.Process(target=self._start_real_time, args=(list_symbols_to_subscribed,))
+                    real_time_process = multiprocessing.Process(target=self._start_real_time, args=(list_symbols_to_subscribed, real_time_queue,))
                     real_time_process.start()
-                    real_time_process.terminate()
             else:
                 if real_time_process is not None:
-                    real_time_process.terminate()
-                    real_time_process = None
+                    real_time_process = real_time_process.terminate()
      
 
 #endregion
