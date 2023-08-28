@@ -13,7 +13,6 @@ from alpaca.common.enums import BaseURL  # La URL base para las solicitudes a la
 # Importaciones relacionadas con el manejo de fechas y tiempos
 from datetime import datetime, timedelta  # Para manejar fechas y tiempos
 import pytz  # Para manejar zonas horarias
-import holidays # Para saber si es dia festivo
 
 # Importaciones para definir tipos de datos
 from typing import Union, Dict, Any, List
@@ -26,6 +25,9 @@ from alpaca.data.models import Bar  # Modelo de conjunto de barras de precios
 from alpaca.trading.models import Order  # Modelo de orden de Alpaca
 from alpaca.data.models import Trade # Modelo de trade de Alpaca
 from alpaca.trading.models import Asset  # Modelo de activo de Alpaca
+from alpaca.trading.models import Clock # Modelo para manejar el tiempo
+
+import holidays # Para saber si es dia festivo
 
 # Importaciones relacionadas con las solicitudes y filtrado de datos
 from alpaca.trading.requests import ClosePositionRequest  # Para solicitar el cierre de una posición en Alpaca

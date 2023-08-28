@@ -215,8 +215,8 @@ class PivotFilter:
 
         for symbol in list_20_days_volume_filter:
             # Verifica si el precio está cerca de un punto de pivote
-            pivot_peak = self._check_price_near_pivot(self.dict_asset_pivots[symbol].list_array_strong_peaks, trade_arrays[(trade_arrays['symbol'] == symbol)]['price'][0], self.dict_asset_pivots[symbol].atr * 0.50)
-            pivot_valley = self._check_price_near_pivot(self.dict_asset_pivots[symbol].list_array_strong_valleys, trade_arrays[(trade_arrays['symbol'] == symbol)]['price'][0], self.dict_asset_pivots[symbol].atr * 0.50)
+            pivot_peak = self._check_price_near_pivot(self.dict_asset_pivots[symbol].list_array_strong_peaks, trade_arrays[(trade_arrays['symbol'] == symbol)]['price'][0], self.dict_asset_pivots[symbol].atr * 0.30)
+            pivot_valley = self._check_price_near_pivot(self.dict_asset_pivots[symbol].list_array_strong_valleys, trade_arrays[(trade_arrays['symbol'] == symbol)]['price'][0], self.dict_asset_pivots[symbol].atr * 0.30)
             
             # Agrega símbolos que cumplen las condiciones a la lista
             if pivot_peak is not None and pivot_peak > trade_arrays[(trade_arrays['symbol'] == symbol)]['price'][0]:
@@ -229,6 +229,30 @@ class PivotFilter:
         
         # Obtiene los últimos datos de barras de 10 minutos para los símbolos
         bars_10_minutes = self._api_alpaca.get_last_10_minute_bars(symbol_list)
+        
+        # Calcula el close promedio de 5 minutos anteriores y filtra resultados mayores a 0
+        window_size = 5  # Tamaño de la ventana para el promedio de cierres
+        avg_close_last_5 = np.array([
+            (symbol, np.mean([bar.close for bar in bars[-window_size:]]))
+            for symbol, bars in bars_10_minutes.data.items()
+            if len(bars) >= window_size
+        ], dtype=[('symbol', 'U10'), ('avg_close', float)])
+        # Crea una nueva lista para almacenar los elementos válidos
+        new_list_near_pivot = []
+        
+        new_list_near_pivot = [
+            (symbol, pivot, action)
+            for symbol, pivot, action in list_near_pivot
+            if (
+                (action == "buy" and trade_arrays[trade_arrays['symbol'] == symbol]['price'][0] >
+                avg_close_last_5[avg_close_last_5['symbol'] == symbol]['avg_close'][0])
+                or
+                (action == "sell" and trade_arrays[trade_arrays['symbol'] == symbol]['price'][0] <
+                avg_close_last_5[avg_close_last_5['symbol'] == symbol]['avg_close'][0])
+            )
+        ]
+        # Actualiza la lista original con los elementos válidos
+        list_near_pivot = new_list_near_pivot
                 
         # Calcula el volumen promedio de 10 minutos y filtra aquellos mayores a 1000
         avg_volume_minutes = [
