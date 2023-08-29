@@ -665,6 +665,7 @@ class PivotController:
         Args:
             new_minute: Nuevo minuto actual.
         """
+        print(self.trades)
         self._last_minute = new_minute
         self.trades = {}
 
@@ -685,7 +686,7 @@ class PivotController:
     def _check_trade_condition(self, trade, queue: Queue):
         # Verifica si el tamaño de operación supera el umbral y toma acción si es así
         current_volume = self.trades.get(trade['symbol'], 0)
-        if current_volume > 5000:
+        if current_volume > 1000:
             # Se guarda el volumen actual del activo
             trade['volume'] = current_volume
             # Enviar trade a alphatrader para comprobar si es comprable
@@ -708,7 +709,7 @@ class PivotController:
         """
         real_time_process = None
         list_symbols_to_subscribed: List[str] = []
-        real_time_queue = multiprocessing.Queue(maxsize=2000)
+        real_time_queue = multiprocessing.Queue()
         
         # Proceso que estara encargado de recibir los trades que lleguen de real_time_process y procesarlos
         receive_trades_process = multiprocessing.Process(target=self._receive_trade, args=(real_time_queue,))
@@ -716,7 +717,7 @@ class PivotController:
         
         # Proceso que estara encargado de procesar los trades cuyo volumen supere el umbral y tradearlos
         alpha_trader = AlphaController()
-        alpha_trader_queue = multiprocessing.Queue(maxsize=2000)
+        alpha_trader_queue = multiprocessing.Queue()
         check_trades_process = multiprocessing.Process(target=alpha_trader.check_trade, args=(alpha_trader_queue,))
         check_trades_process.start()
         
