@@ -708,7 +708,7 @@ class PivotController:
         """
         real_time_process = None
         list_symbols_to_subscribed: List[str] = []
-        real_time_queue = multiprocessing.Queue()
+        real_time_queue = multiprocessing.Queue(maxsize=2000)
         
         # Proceso que estara encargado de recibir los trades que lleguen de real_time_process y procesarlos
         receive_trades_process = multiprocessing.Process(target=self._receive_trade, args=(real_time_queue,))
@@ -716,7 +716,7 @@ class PivotController:
         
         # Proceso que estara encargado de procesar los trades cuyo volumen supere el umbral y tradearlos
         alpha_trader = AlphaController()
-        alpha_trader_queue = multiprocessing.Queue()
+        alpha_trader_queue = multiprocessing.Queue(maxsize=2000)
         check_trades_process = multiprocessing.Process(target=alpha_trader.check_trade, args=(alpha_trader_queue,))
         check_trades_process.start()
         
@@ -731,10 +731,12 @@ class PivotController:
             # Obtén la fecha y hora actuales
             current_time = datetime.now().astimezone(pytz.utc)
             print("")
+            print(self.trades)
             print(current_time)
             assets_filter_2 = self.pivot_filter.filter_2()
             
             if current_time > time_to_close:
+                print("5 minutos para cerrar el mercado, cerrando el programa...")
                 receive_trades_process.terminate()
                 check_trades_process.terminate()
                 check_positions_process.terminate()
