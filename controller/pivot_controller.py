@@ -310,7 +310,7 @@ class PivotFilter:
         # Se revisa si la lista esta vacia
         if np.any(list_pivots):
             # Busca los pivots que se encuentren cerca al precio
-            check_near_strong_pivot = np.where(np.abs(list_pivots[:,1] - current_price) < par_slip | np.abs(list_pivots[:,1] - current_price) > par_slip*0.5)
+            check_near_strong_pivot = np.where((np.abs(list_pivots[:,1] - current_price) < par_slip) | (np.abs(list_pivots[:,1] - current_price) > par_slip*0.5))
             check_near_strong_pivot = list_pivots[check_near_strong_pivot]
             # En caso de encontrar retorna True
             if np.any(check_near_strong_pivot) :
