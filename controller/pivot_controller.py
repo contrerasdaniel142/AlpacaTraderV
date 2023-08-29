@@ -174,14 +174,14 @@ class PivotFilter:
             
         self._volume_19_days = volume_days
     
-    def filter_2(self) -> np.ndarray:
+    def filter_2(self) -> Dict:
         """
         Filtra y selecciona activos basados en criterios específicos.
 
         Realiza una serie de pasos de filtrado y selección de activos basados en volumen, precio y condiciones de pivot.
 
         Returns:
-            np.ndarray: Un arreglo estructurado que contiene los activos que cumplen con los criterios.
+            Dict: Un diccionario que contiene los activos que cumplen con los criterios.
         """        
         # Encuentra el volumen de los días anteriores si self._volume_days está vacío
         if not self._volume_19_days:
@@ -261,18 +261,18 @@ class PivotFilter:
             if (avg := np.mean([bar.volume for bar in bars])) > 1000
         ]
         
-        # Crea un array con los símbolos cerca de pivotes y su información
-        array_near_pivot = np.array([
-            (symbol, action, pivot, avg)
-            for symbol, pivot, action in list_near_pivot
+        # Crea un diccionario con los símbolos cerca de pivotes y su información
+        near_pivot = {
+            symbol: {'action': action, 'pivot': pivot, 'avg': avg}
             for symbol_avg, avg in avg_volume_minutes
+            for symbol, pivot, action in list_near_pivot
             if symbol_avg == symbol
-        ], dtype=[('symbol', '<U32'), ('action', '<U32'), ('pivot', float), ('avg', float)])
-                                        
-        print(str(len(array_near_pivot['symbol'])))
-        print(array_near_pivot['symbol'])
+        }
+
+        print(len(near_pivot))
+        print(near_pivot.keys())
         
-        return array_near_pivot
+        return near_pivot
 
     def _save_to_file(self, text_list: list[str]):
         """
@@ -518,7 +518,7 @@ class RealTimeController:
     
 
 class AlphaController:
-    def __init__(self) -> None:
+    def __init__(self, subscribed_symbols, traded_assets) -> None:
         """
         Inicializa la clase AlphaController.
 
@@ -530,8 +530,8 @@ class AlphaController:
             traded_assets (List[str]): Lista de activos que han sido objeto de operaciones.
         """
         self._client = AlphaTraderPro()
-        self.subscribed_symbols = np.empty((0, 4), dtype=[('symbol', '<U32'), ('action', '<U32'), ('pivot', float), ('avg', float)])
-        self.traded_assets: List[str] = []
+        self.subscribed_symbols = subscribed_symbols
+        self.traded_assets = traded_assets
 
     def _buy(self, symbol):
         """
@@ -587,23 +587,18 @@ class AlphaController:
 
     def check_trade(self, queue: Queue):
         while True:
-            trade = queue.get()
-            matching_symbol = self.subscribed_symbols['symbol'] == trade['symbol']
-            index = np.where(matching_symbol)[0]  # Obtiene los índices donde se cumple la condición
-            if index.size > 0:
-                find_symbol = self.subscribed_symbols[index[0]]
-                
-                symbol = trade['symbol']
-                price = trade['price']
-                volume = trade['volume']
-                pivot = find_symbol['pivot']
-                avg = find_symbol['avg']
-                action = find_symbol['action']
-                
-                if action == "buy" and pivot < price and volume > avg * 5:
-                    self._buy(symbol)
-                if action == "sell" and pivot > price and volume > avg * 5:
-                    self._sell(symbol)    
+            trade = queue.get()  
+            symbol = trade['symbol']
+            price = trade['price']
+            volume = trade['volume']
+            pivot = self.subscribed_symbols[symbol]['pivot']
+            avg = self.subscribed_symbols[symbol]['avg']
+            action = self.subscribed_symbols[symbol]['action']
+            
+            if action == "buy" and pivot < price and volume > avg * 5:
+                self._buy(symbol)
+            if action == "sell" and pivot > price and volume > avg * 5:
+                self._sell(symbol)    
     
     def check_positions(self):
         """
@@ -643,20 +638,20 @@ class PivotController:
         self._last_minute = None
         self.trades = {}
     
-    def _start_real_time(self, list_symbols: List[str], queue: Queue):
-        controller = RealTimeController(queue, list_symbols)
+    def _start_real_time(self, list_symbols: List[str], queue_real_time: Queue):
+        controller = RealTimeController(queue_real_time, list_symbols)
         controller.start()
         
-    def _receive_trade(self, queue: Queue):
+    def _receive_trade(self, queue_real_time: Queue, queue_alpha_trader: Queue):
         while True:
-            trade = queue.get()
+            trade = queue_real_time.get()
             current_time = datetime.now().astimezone(pytz.utc)
             # Si cambió el minuto, reiniciamos los datos de operaciones
             if self._last_minute != current_time.minute:
                 self._reset_trades(current_time.minute)
             # Actualizamos los datos de operaciones y verificamos condiciones
             self._update_trade_data(trade)
-            self._check_trade_condition(trade, queue)
+            self._check_trade_condition(trade, queue_alpha_trader)
 
     def _reset_trades(self, new_minute):
         """
@@ -683,14 +678,14 @@ class PivotController:
         if self._last_minute == trade['timestamp'].minute:
             self.trades[trade['symbol']] += trade['size']
             
-    def _check_trade_condition(self, trade, queue: Queue):
+    def _check_trade_condition(self, trade, queue_alpha_trader: Queue):
         # Verifica si el tamaño de operación supera el umbral y toma acción si es así
         current_volume = self.trades.get(trade['symbol'], 0)
-        if current_volume > 1000:
+        if current_volume > 4000:
             # Se guarda el volumen actual del activo
             trade['volume'] = current_volume
             # Enviar trade a alphatrader para comprobar si es comprable
-            queue.put(trade)
+            queue_alpha_trader.put(trade)
 
     def start(self):
         """
@@ -709,17 +704,20 @@ class PivotController:
         """
         real_time_process = None
         list_symbols_to_subscribed: List[str] = []
-        real_time_queue = multiprocessing.Queue()
-        
-        # Proceso que estara encargado de recibir los trades que lleguen de real_time_process y procesarlos
-        receive_trades_process = multiprocessing.Process(target=self._receive_trade, args=(real_time_queue,))
-        receive_trades_process.start()
+        manager = multiprocessing.Manager()
+        real_time_queue = manager.Queue()
+        subscribed_symbols = manager.dict({})
+        traded_assets = manager.list([])
         
         # Proceso que estara encargado de procesar los trades cuyo volumen supere el umbral y tradearlos
-        alpha_trader = AlphaController()
-        alpha_trader_queue = multiprocessing.Queue()
+        alpha_trader = AlphaController(subscribed_symbols, traded_assets)
+        alpha_trader_queue = manager.Queue()
         check_trades_process = multiprocessing.Process(target=alpha_trader.check_trade, args=(alpha_trader_queue,))
         check_trades_process.start()
+        
+        # Proceso que estara encargado de recibir los trades que lleguen de real_time_process y procesarlos
+        receive_trades_process = multiprocessing.Process(target=self._receive_trade, args=(real_time_queue, alpha_trader_queue,))
+        receive_trades_process.start()
         
         # Proceso que estara encargado de consultar las posiciones para administrar ganancias o perdidas
         check_positions_process = multiprocessing.Process(target=alpha_trader.check_positions)
@@ -732,7 +730,6 @@ class PivotController:
             # Obtén la fecha y hora actuales
             current_time = datetime.now().astimezone(pytz.utc)
             print("")
-            print(self.trades)
             print(current_time)
             assets_filter_2 = self.pivot_filter.filter_2()
             
@@ -746,21 +743,26 @@ class PivotController:
                 alpha_trader._client.close_all_positions()
                 break
                 
-            if assets_filter_2.size != 0:
-                # Crear una máscara booleana que indica si los simbolos del filtro 2 ya fueron tradeados en alpha_trader
-                mask = np.isin(assets_filter_2['symbol'], alpha_trader.traded_assets)
-                # Filtrar el array original para mantener solo los símbolos que no están en la lista
-                filtered_assets = assets_filter_2[~mask]
-                list_symbols_to_subscribed = filtered_assets['symbol'].tolist()
+            if len(assets_filter_2) > 0:
+                # Filtrar el diccionario para quitar aquellos symbolos que ya han sido tradeados
+                filtered_assets = {symbol: data for symbol, data in assets_filter_2.items() if symbol not in traded_assets}
+                list_symbols_to_subscribed = list(filtered_assets.keys())
                 # Obtiene las listas y las convierte en set para comparar si son iguales
-                set_suscribed_symbols = set(alpha_trader.subscribed_symbols['symbol'].tolist())
+                set_suscribed_symbols = set(subscribed_symbols.keys())
                 set_symbols_to_subscribed = set(list_symbols_to_subscribed)
                 
                 if set_suscribed_symbols != set_symbols_to_subscribed:
                     if real_time_process is not None:
                         real_time_process = real_time_process.terminate()
-                        
-                    alpha_trader.subscribed_symbols = filtered_assets
+                    
+                    # Se actualiza la variable con memoria compartida de usbscribed_symbols
+                    # Elimina las claves no presentes en filtered_assets
+                    for symbol in subscribed_symbols.keys():
+                        if symbol not in filtered_assets:
+                            del subscribed_symbols[symbol]
+                    # Actualiza los valores de las claves existentes y agrega las nuevas
+                    subscribed_symbols.update(filtered_assets)
+                    
                     real_time_process = multiprocessing.Process(target=self._start_real_time, args=(list_symbols_to_subscribed, real_time_queue,))
                     real_time_process.start()
             else:
