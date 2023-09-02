@@ -8,7 +8,7 @@ from .models import Order
 # Importaciones de tipos de Python
 from typing import Dict, List
 
-class AlphaTraderPro:
+class AlphaTraderProApi:
     """Clase para interactuar con AlphaTraderPro.
 
         Esta clase proporciona una interfaz para interactuar con la API de AlphaTraderPro.

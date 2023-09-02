@@ -173,7 +173,12 @@ poetry.toml
 # LSP config files
 pyrightconfig.json
 
-# End of https://www.toptal.com/developers/gitignore/api/python
-
 .vscode
+
+# Page with bars and pivots found for each asset
 controller/templates/index_updated.html
+
+# Code online drawing and diagramming tool
+architecture software/drawio
+
+# End of https://www.toptal.com/developers/gitignore/api/python

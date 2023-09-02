@@ -25,11 +25,11 @@ sys.path.append(sys.path.append("D:\Daniel\Documents\SimonsTraderV"))
 
 # Importaciones específicas del proyecto
 from configurate import conf  # Importa el módulo conf desde el paquete configurate
-from model.alpha_trader_pro.api import AlphaTraderPro # Importa la clase AlphaTraderPro 
+from model.alpha_trader_pro.api import AlphaTraderProApi # Importa la clase AlphaTraderPro 
 from model.alpha_trader_pro.models import Order # Importa la clase Order con la cual se haran ordenes a AlphaTraderPro
 from model.alpha_trader_pro.enums import Exchange, Type, Side, Status # Importa los Enums que se usaran en AlphaTraderPro
 from model.alpaca.find_pivots import PivotsAlpaca  # Importa la clase PivotsAlpaca desde el módulo pivots del paquete model.alpaca
-from model.alpaca.api import ApiAlpaca  # Importa la clase ApiAlpaca desde el módulo api del paquete model.alpaca
+from model.alpaca.api import AlpacaApi  # Importa la clase ApiAlpaca desde el módulo api del paquete model.alpaca
 from alpaca.data.timeframe import TimeFrame  # Importa la clase TimeFrame desde el módulo timeframe del paquete alpaca.data
 from alpaca.data.models import Bar  # Importa la clase Bar desde el módulo models del paquete alpaca.data
 from alpaca.trading.client import TradingClient # Importa la clase TradingClient de alpaca
@@ -53,7 +53,7 @@ class PivotFilter:
         Inicializador de la clase PivotFilter. Se encarga de filtrar las listas de activos.
         """
         # Creamos una instancia de la clase clsApiAlpaca utilizando las claves de API de la configuración.
-        self._api_alpaca = ApiAlpaca(conf.alpaca_api_key_id, conf.alpaca_api_secret_key, conf.alpaca_data_feed)
+        self._api_alpaca = AlpacaApi(conf.alpaca_api_key_id, conf.alpaca_api_secret_key, conf.alpaca_data_feed)
         # Creamos un diccionario que contendrá los pivotes de cada activo.
         self.dict_asset_pivots: Dict[str, PivotsAlpaca]= {}
         # Creamos una lista de strings que contendrá los activos que pasen por el filtro 1.
@@ -73,7 +73,7 @@ class PivotFilter:
             None
         """
         # Creamos un objeto para filtrar los activos según las reglas establecidas.
-        finviz_filtered = FinvizFiltered()
+        finviz_filtered = FinvizApi()
 
         # Obtenemos los símbolos que maneja Alpaca para evitar errores al intentar manejar activos no admitidos por Alpaca.
         alpaca_assets = self._api_alpaca.get_symbols_assets_with(conf.alpaca_symbol_status, conf.alpaca_asset_class, None)
@@ -309,8 +309,9 @@ class PivotFilter:
         """
         # Se revisa si la lista esta vacia
         if np.any(list_pivots):
+            # Aumetamos
             # Busca los pivots que se encuentren cerca al precio
-            check_near_strong_pivot = np.where((np.abs(list_pivots[:,1] - current_price) < par_slip) | (np.abs(list_pivots[:,1] - current_price) > par_slip*0.5))
+            check_near_strong_pivot = np.where((np.abs(list_pivots[:,1] - current_price) < par_slip))
             check_near_strong_pivot = list_pivots[check_near_strong_pivot]
             # En caso de encontrar retorna True
             if np.any(check_near_strong_pivot) :
@@ -394,7 +395,7 @@ class PivotFilter:
         # Abrir el archivo HTML en un navegador
         webbrowser.open('file://' + abs_file_path)
     
-class FinvizFiltered:
+class FinvizApi:
     """
     Clase que se encarga de conectarse a finviz.com para obtener y filtrar activos.
     """  
@@ -529,7 +530,7 @@ class AlphaController:
             client (AlphaTraderPro): Instancia de AlphaTraderPro para interactuar con la plataforma de trading.
             traded_assets (List[str]): Lista de activos que han sido objeto de operaciones.
         """
-        self._client = AlphaTraderPro()
+        self._client = AlphaTraderProApi()
         self.subscribed_symbols = subscribed_symbols
         self.traded_assets = traded_assets
 

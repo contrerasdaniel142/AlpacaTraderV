@@ -40,7 +40,7 @@ from alpaca.data.timeframe import TimeFrame  # Para definir el marco de tiempo d
 
 #endregion
 
-class ApiAlpaca:
+class AlpacaApi:
     # region initial
     def __init__(self, api_key_id:str, api_secret_key:str, data_feed:DataFeed):
         """
